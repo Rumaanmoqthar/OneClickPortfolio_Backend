@@ -1,39 +1,25 @@
 {
-  "name": "oneclickportfolio",
-  "private": true,
-  "version": "0.0.0",
+  "name": "oneclick-portfolio-backend",
+  "version": "1.0.0",
+  "description": "Backend for OneClick Portfolio",
+  "main": "server.js",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "@tailwindcss/vite": "^4.1.13",
     "archiver": "^7.0.1",
-    "axios": "^1.12.2",
+    "axios": "^1.7.2",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.2",
-    "express": "^5.1.0",
-    "form-data": "^4.0.4",
-    "mongoose": "^8.18.1",
-    "multer": "^2.0.2",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "react-icons": "^5.5.0",
-    "simple-resume-parser": "^1.1.8",
-    "tailwindcss": "^4.1.13"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.33.0",
-    "@types/react": "^19.1.10",
-    "@types/react-dom": "^19.1.7",
-    "@vitejs/plugin-react": "^5.0.0",
-    "eslint": "^9.33.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.20",
-    "globals": "^16.3.0",
-    "vite": "^7.1.2"
+    "crypto": "^1.0.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "form-data": "^4.0.0",
+    "mongoose": "^8.4.1",
+    "multer": "^1.4.5-lts.1"
   }
 }
