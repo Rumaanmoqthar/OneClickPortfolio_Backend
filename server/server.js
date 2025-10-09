@@ -15,25 +15,25 @@ const startServer = async () => {
 
     // 3. Create the Express App
     const app = express();
-    const PORT = process.env.PORT || 5000; // Render uses PORT env variable
+    const PORT = process.env.PORT || 5000;
 
     // 4. Apply Middleware
-    console.log("Applying CORS middleware...");
+    console.log("Applying simple CORS middleware for local development...");
     app.use(cors());
     app.use(express.json());
 
-    // 5. Apply All API Routes
+    // 5. Apply All API Routes from your router file
     app.use('/api', resumeRoutes);
     console.log("API routes applied.");
-    
-    // Health check endpoint
-    app.get('/api/health', (req, res) => {
-      res.json({ status: 'OK', timestamp: new Date().toISOString() });
+
+    // New simple test route at /api/product
+    app.get('/api/product', (req, res) => {
+      res.json({ status: 'OK', message: 'Product test route is working' });
     });
 
     // 6. Start Listening for requests
     app.listen(PORT, () => {
-      console.log(`✅ Server is fully ready and running on port ${PORT}`);
+      console.log(`✅ Server is fully ready and running on http://localhost:${PORT}`);
     });
 
   } catch (error) {
