@@ -1,34 +1,49 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import cors from 'cors';
-import connectDB from './config/db.js';
+import dotenv from 'dotenv';
 import resumeRoutes from './routes/resumeRoutes.js';
 
-// This function will be called by Vercel
-const startServer = async () => {
+// Load environment variables
+dotenv.config();
+
+const app = express();
+
+// Middleware setup
+app.use(cors());
+app.use(express.json());
+
+// --- Database Connection Logic (adapted from your example) ---
+let isConnected = false;
+
+const connectToMongoDB = async () => {
+  if (isConnected) {
+    console.log('=> using existing database connection');
+    return;
+  }
   try {
-    // 1. Connect to the Database and WAIT for it to finish
-    await connectDB();
-    console.log("Database connection successful for Vercel deployment.");
-
-    // 2. Create the Express App
-    const app = express();
-
-    // 3. Apply Middleware
-    // For deployment, we use the FRONTEND_ORIGIN environment variable
-    const allowedOrigins = (process.env.FRONTEND_ORIGIN || '').split(',');
-    console.log("Allowed CORS Origins:", allowedOrigins);
-    app.use(cors({ origin: allowedOrigins }));
-    app.use(express.json());
-
-    // 4. Apply All API Routes
-    app.use('/api', resumeRoutes);
-    console.log("API routes applied.");
-
-    return app; // Return the app instance
-
+    await mongoose.connect(process.env.MONGODB_URI);
+    isConnected = true;
+    console.log('=> new database connection established');
   } catch (error) {
-    console.error("❌ Failed to initialize server for Vercel:", error);
+    console.error('=> error connecting to MongoDB:', error);
   }
 };
 
-export default await startServer();
+// Middleware to ensure DB is connected before handling requests
+app.use(async (req, res, next) => {
+  await connectToMongoDB();
+  next();
+});
+// ----------------------------------------------------------------
+
+// Main API Routes
+app.use('/api', resumeRoutes);
+
+// Health check for Vercel
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Export the app for Vercel serverless functions
+export default app;
