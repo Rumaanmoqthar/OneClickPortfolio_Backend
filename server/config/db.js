@@ -1,16 +1,21 @@
 import mongoose from 'mongoose';
 
 const connectDB = async () => {
+  // Check if we already have a connection
+  if (mongoose.connection.readyState >= 1) {
+    console.log("=> using existing database connection.");
+    return;
+  }
+
   try {
-    // This line reads the MONGO_URI from your .env file
-    const conn = await mongoose.connect(process.env.MONGO_URI);
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`MongoDB Connection Error: ${error.message}`);
-    // Exit the process with a failure code if the database connection fails on startup
-    process.exit(1);
+    // Create a new connection
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log("=> new database connection established.");
+  } catch (err) {
+    console.error("MongoDB Connection Error:", err.message);
+    // Re-throw the error to be caught by the startServer function
+    throw new Error("Could not connect to MongoDB.");
   }
 };
 
 export default connectDB;
-
