@@ -1,44 +1,44 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import path from 'path';
+import connectDB from './config/db.js';
 import resumeRoutes from './routes/resumeRoutes.js';
 
-dotenv.config();
+const startServer = async () => {
+  try {
+    // 1. Load Environment Variables for local use (Render will use its own)
+    dotenv.config();
 
-const app = express();
+    // 2. Connect to the Database
+    await connectDB();
 
-// Allow JSON bodies for non-multipart endpoints
-app.use(express.json());
+    const app = express();
+    // --- FINAL CHANGE FOR RENDER ---
+    // Render provides its own PORT environment variable. 10000 is a common default.
+    const PORT = process.env.PORT || 10000;
 
-// Configure CORS: allow your deployed frontend origin and localhost during development
-const allowedOrigins = [
-  process.env.FRONTEND_URL || 'https://oneclickportfolio.onrender.com',
-  process.env.VITE_DEV_ORIGIN || 'http://localhost:5173',
-  'http://localhost:3000'
-];
-app.use(cors({
-  origin: (origin, callback) => {
-    // allow requests with no origin (like curl, mobile apps)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) return callback(null, true);
-    return callback(new Error('CORS policy: origin not allowed'), false);
-  },
-  credentials: true,
-}));
+    // 4. Apply Middleware
+    const allowedOrigins = (process.env.FRONTEND_ORIGIN || '').split(',');
+    app.use(cors({ origin: allowedOrigins }));
+    app.use(express.json());
 
-// Serve uploads folder (optional)
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+    // 5. Apply All API Routes
+    app.use('/api', resumeRoutes);
+    
+    // Health check endpoint
+    app.get('/api/health', (req, res) => {
+      res.json({ status: 'OK', timestamp: new Date().toISOString() });
+    });
 
-// Mount API routes
-app.use('/api', resumeRoutes);
+    // 6. Start Listening for requests
+    app.listen(PORT, () => {
+      console.log(`✅ Server is running on port ${PORT}`);
+    });
 
-// Health-check
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+  } catch (error) {
+    console.error("❌ Failed to start server:", error);
+    process.exit(1);
+  }
+};
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  /* eslint-disable no-console */
-  console.log(`Server running on port ${PORT}`);
-  /* eslint-enable no-console */
-});
+startServer();
