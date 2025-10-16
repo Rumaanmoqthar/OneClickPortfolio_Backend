@@ -1,73 +1,139 @@
-import fs from 'fs/promises';
-import path from 'path';
-import { existsSync } from 'fs';
+import FormData from 'form-data';
+import axios from 'axios';
+import https from 'https';
+import { constants } from 'crypto';
+import Resume from '../models/resumeModel.js';
+import archiver from 'archiver';
+import { getClassicPortfolioHTML } from '../templates/classicTemplate.js';
+import { getModernPortfolioHTML } from '../templates/modernTemplate.js';
 
-const uploadsDir = path.join(process.cwd(), 'uploads');
+// --- FIX for Node.js v17+ SSL issue ---
+const httpsAgent = new https.Agent({
+  secureOptions: constants.SSL_OP_LEGACY_SERVER_CONNECT,
+});
 
-const ensureUploadsDir = async () => {
-  try { await fs.mkdir(uploadsDir, { recursive: true }); }
-  catch (e) { /* ignore */ }
-};
+export const uploadToParseur = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded.' });
+  }
 
-const generateId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const template = req.body.template || 'modern';
+  let newResume;
 
-const uploadResume = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file received. Use field name "resume".' });
-    }
+    newResume = new Resume({ name: { full: 'Processing...' } });
+    await newResume.save();
+    console.log(`Checkpoint 1: Created placeholder with ID: ${newResume._id}`);
 
-    const { originalname, mimetype, buffer } = req.file;
+    const mailboxId = '141196';
+    const form = new FormData();
 
-    const allowed = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ];
-    if (!allowed.includes(mimetype)) {
-      return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, DOC, DOCX.' });
-    }
+    // --- The one required change is here ---
+    form.append('file', req.file.buffer, req.file.originalname || 'resume.pdf');
+    // ------------------------------------
 
-    await ensureUploadsDir();
+    form.append('InternalResumeId', newResume._id.toString());
 
-    const id = generateId();
-    const ext = path.extname(originalname) || (mimetype === 'application/pdf' ? '.pdf' : '.bin');
-    const filename = `${id}${ext}`;
-    const savedPath = path.join(uploadsDir, filename);
-
-    await fs.writeFile(savedPath, buffer);
-
-    // Return resumeId and a public URL path to the saved file (frontend will GET this URL)
-    return res.json({
-      resumeId: id,
-      url: `/uploads/${filename}`,
-      message: 'Uploaded successfully'
+    await axios.post(`https://api.parseur.com/parser/${mailboxId}/upload`, form, {
+      headers: {
+        ...form.getHeaders(),
+        'Authorization': `Token ${process.env.PARSEUR_API_KEY}`,
+      },
+      httpsAgent
     });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('uploadResume error:', err);
-    return res.status(500).json({ error: err.message || 'Server error while uploading resume.' });
+
+    console.log(`Checkpoint 2: Sent file to Parseur for ID: ${newResume._id}`);
+    res.status(200).json({
+      message: 'Your portfolio is being generated!',
+      resumeId: newResume._id,
+    });
+  } catch (apiError) {
+    const errorMessage = apiError.response ? JSON.stringify(apiError.response.data) : apiError.message;
+    console.error('--- UPLOAD ERROR ---', errorMessage);
+    if (newResume?._id) await Resume.findByIdAndDelete(newResume._id);
+    res.status(500).json({ error: 'Error during the upload process. Check server logs.' });
   }
 };
 
-const getResume = async (req, res) => {
+// ... The rest of the file is correct and remains unchanged ...
+export const receiveParseurWebhook = async (req, res) => {
+  console.log('--- WEBHOOK RECEIVED ---');
+  const parsedData = req.body;
+  const internalResumeId = parsedData.internal_resume_id;
+
+  if (!internalResumeId) {
+    console.error('Webhook Error: No "internal_resume_id" field found.');
+    return res.status(400).send('Bad Request: Missing ID field.');
+  }
+
   try {
-    const { id } = req.params;
-    if (!id) return res.status(400).json({ error: 'Missing id param' });
+    const updatedData = {
+      name: parsedData.CandidateName,
+      email: parsedData.CandidateEmail,
+      phone: parsedData.CandidatePhone,
+      address: parsedData.CandidateAddress,
+      currentJobRole: parsedData.CurrentJobRole,
+      jobDescription: parsedData.CurentJobDescription,
+      skills: parsedData.Skills ? parsedData.Skills.split(/, |\n| \/ /g).map(s => s.trim()).filter(Boolean) : [],
+      hobbies: parsedData.OtherInterestsHobbies,
+      experience: parsedData.WorkExperience,
+      education: parsedData.Education,
+      projects: parsedData.Projects || [],
+    };
 
-    await ensureUploadsDir();
-    const files = await fs.readdir(uploadsDir);
-    const match = files.find((f) => f.startsWith(id));
-    if (!match) return res.status(404).json({ error: 'Resume not found' });
+    const updatedResume = await Resume.findByIdAndUpdate(internalResumeId, updatedData, { new: true });
+    if (!updatedResume) {
+      return res.status(404).send('Matching resume not found.');
+    }
 
-    // Return JSON with the public URL (do not stream binary here to avoid frontend JSON parsing errors)
-    const url = `/uploads/${match}`;
-    return res.json({ resumeId: id, url });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('getResume error:', err);
-    return res.status(500).json({ error: err.message || 'Server error while fetching resume.' });
+    console.log(`Webhook data saved for ID: ${updatedResume._id}.`);
+    res.status(200).send('OK');
+  } catch (dbError) {
+    console.error('--- DATABASE SAVE ERROR FROM WEBHOOK ---', dbError.message);
+    res.status(500).send('Error saving data.');
   }
 };
 
-export default { uploadResume, getResume };
+export const getResumeById = async (req, res) => {
+  try {
+    const resume = await Resume.findById(req.params.id);
+    if (!resume) {
+      return res.status(404).json({ message: 'Portfolio not found.' });
+    }
+    res.json(resume);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error while fetching portfolio.' });
+  }
+};
+
+export const generatePortfolioZip = async (req, res) => {
+  try {
+    const resume = await Resume.findById(req.params.id);
+    const templateType = req.query.template || 'modern';
+
+    if (!resume || resume.name.full === 'Processing...') {
+      return res.status(404).json({ message: 'Portfolio data not ready or still processing.' });
+    }
+
+    const zipFileName = `${resume.name.full.replace(/\s+/g, '_')}_Portfolio.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename=${zipFileName}`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.pipe(res);
+
+    const portfolioHtml = templateType === 'classic'
+      ? getClassicPortfolioHTML(resume.toObject())
+      : getModernPortfolioHTML(resume.toObject());
+
+    archive.append(portfolioHtml, { name: 'index.html' });
+
+    const readmeContent = `# ${resume.name.full}'s Portfolio\n\nGenerated by OneClick Portfolio.`;
+    archive.append(readmeContent, { name: 'README.md' });
+
+    await archive.finalize();
+  } catch (error) {
+    console.error('Error generating portfolio ZIP:', error);
+    res.status(500).send({ message: 'Server error while generating ZIP.' });
+  }
+};
