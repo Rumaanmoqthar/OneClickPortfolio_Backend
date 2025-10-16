@@ -1,17 +1,16 @@
 import FormData from 'form-data';
 import axios from 'axios';
 import https from 'https';
-import { constants } from 'crypto'; // Required for the fix
+import { constants } from 'crypto';
 import Resume from '../models/resumeModel.js';
 import archiver from 'archiver';
 import { getClassicPortfolioHTML } from '../templates/classicTemplate.js';
 import { getModernPortfolioHTML } from '../templates/modernTemplate.js';
 
-// --- FIX for Node.js v17+ SSL issue with Parseur API ---
+// --- FIX for Node.js v17+ SSL issue ---
 const httpsAgent = new https.Agent({
   secureOptions: constants.SSL_OP_LEGACY_SERVER_CONNECT,
 });
-// ---------------------------------------------------------
 
 export const uploadToParseur = async (req, res) => {
   if (!req.file) {
@@ -26,9 +25,13 @@ export const uploadToParseur = async (req, res) => {
     await newResume.save();
     console.log(`Checkpoint 1: Created placeholder with ID: ${newResume._id}`);
 
-    const mailboxId = '141196'; // Your Parseur mailbox ID
+    const mailboxId = '141196';
     const form = new FormData();
-    form.append('file', req.file.buffer, req.file.originalname);
+
+    // --- The one required change is here ---
+    form.append('file', req.file.buffer, req.file.originalname || 'resume.pdf');
+    // ------------------------------------
+
     form.append('InternalResumeId', newResume._id.toString());
 
     await axios.post(`https://api.parseur.com/parser/${mailboxId}/upload`, form, {
@@ -36,7 +39,7 @@ export const uploadToParseur = async (req, res) => {
         ...form.getHeaders(),
         'Authorization': `Token ${process.env.PARSEUR_API_KEY}`,
       },
-      httpsAgent // Apply the SSL compatibility fix
+      httpsAgent
     });
 
     console.log(`Checkpoint 2: Sent file to Parseur for ID: ${newResume._id}`);
@@ -52,6 +55,7 @@ export const uploadToParseur = async (req, res) => {
   }
 };
 
+// ... The rest of the file is correct and remains unchanged ...
 export const receiveParseurWebhook = async (req, res) => {
   console.log('--- WEBHOOK RECEIVED ---');
   const parsedData = req.body;
