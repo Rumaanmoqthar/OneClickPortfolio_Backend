@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { createReadStream, existsSync } from 'fs';
+import { existsSync } from 'fs';
 
 const uploadsDir = path.join(process.cwd(), 'uploads');
 
@@ -18,6 +18,7 @@ const uploadResume = async (req, res) => {
     }
 
     const { originalname, mimetype, buffer } = req.file;
+
     const allowed = [
       'application/pdf',
       'application/msword',
@@ -36,15 +37,14 @@ const uploadResume = async (req, res) => {
 
     await fs.writeFile(savedPath, buffer);
 
-    // Replace this with your processing call if you have one:
-    // const processed = await processResume(savedPath, { template: req.body.template });
-
+    // Return resumeId and a public URL path to the saved file (frontend will GET this URL)
     return res.json({
       resumeId: id,
-      savedPath: `/uploads/${filename}`,
+      url: `/uploads/${filename}`,
       message: 'Uploaded successfully'
     });
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error('uploadResume error:', err);
     return res.status(500).json({ error: err.message || 'Server error while uploading resume.' });
   }
@@ -55,35 +55,16 @@ const getResume = async (req, res) => {
     const { id } = req.params;
     if (!id) return res.status(400).json({ error: 'Missing id param' });
 
-    // find file in uploadsDir that starts with the id
     await ensureUploadsDir();
     const files = await fs.readdir(uploadsDir);
     const match = files.find((f) => f.startsWith(id));
     if (!match) return res.status(404).json({ error: 'Resume not found' });
 
-    const filePath = path.join(uploadsDir, match);
-
-    // If you want to return JSON with URL:
-    // return res.json({ resumeId: id, url: `/uploads/${match}` });
-
-    // Or send file directly:
-    if (!existsSync(filePath)) return res.status(404).json({ error: 'File missing' });
-
-    // set proper content-type based on extension
-    const ext = path.extname(match).toLowerCase();
-    const contentType = ext === '.pdf' ? 'application/pdf' :
-                        ext === '.docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' :
-                        ext === '.doc' ? 'application/msword' : 'application/octet-stream';
-    res.setHeader('Content-Type', contentType);
-
-    // stream file
-    const stream = createReadStream(filePath);
-    stream.on('error', (err) => {
-      console.error('stream error', err);
-      res.status(500).end();
-    });
-    stream.pipe(res);
+    // Return JSON with the public URL (do not stream binary here to avoid frontend JSON parsing errors)
+    const url = `/uploads/${match}`;
+    return res.json({ resumeId: id, url });
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error('getResume error:', err);
     return res.status(500).json({ error: err.message || 'Server error while fetching resume.' });
   }
