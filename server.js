@@ -18,8 +18,21 @@ const startServer = async () => {
     const PORT = process.env.PORT || 10000;
 
     // 4. Apply Middleware
-    const allowedOrigins = (process.env.FRONTEND_ORIGIN || '').split(',');
-    app.use(cors({ origin: allowedOrigins }));
+    const allowedOrigins = [
+      'http://localhost:3000', // Common local dev port
+      'http://localhost:5173', // Another common local dev port (Vite)
+      'https://one-click-portfolio.vercel.app' // Your deployed Vercel frontend
+    ];
+    const corsOptions = {
+      origin: (origin, callback) => {
+        if (allowedOrigins.includes(origin) || !origin) { // Allow requests with no origin (like Postman)
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      }
+    };
+    app.use(cors(corsOptions));
     app.use(express.json());
 
     // 5. Apply All API Routes
